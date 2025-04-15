@@ -1,0 +1,41 @@
+.DS_Store
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.Python
+
+# Output files
+articles.json
+
+# Environment variables
+.env
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.bak
+*.tmp
+.cache/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto News Assistant</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <h1>Crypto News Assistant</h1>
+            </div>
+            <div class="header-status">
+                <span id="statusIndicator" class="status-indicator">
+                    <i class="fas fa-circle"></i> <span id="statusText">Connected</span>
+                </span>
+                <span id="lastUpdateTime" class="last-update">Last update: Checking...</span>
+            </div>
+        </header>
+        
+        <main class="main-content">
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h2><i class="fas fa-comment-dots"></i> Chat with the Assistant</h2>
+                    <button id="clearChat" class="clear-button">
+                        <i class="fas fa-trash-alt"></i> Clear Chat
+                    </button>
+                </div>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-container">
+                    <textarea id="userQuestion" placeholder="Ask about crypto news, prices, or trends..."></textarea>
+                    <button onclick="sendMessage()" id="sendButton" aria-label="Send message">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <div class="tabs">
+                    <button class="tab active" onclick="showTab('dashboardTab', this)">
+                        <i class="fas fa-chart-line"></i> Dashboard
+                    </button>
+                    <button class="tab" onclick="showTab('newsTab', this)">
+                        <i class="fas fa-newspaper"></i> Latest News
+                    </button>
+                    <button class="tab" onclick="showTab('settingsTab', this)">
+                        <i class="fas fa-cog"></i> Settings
+                    </button>
+                </div>
+                
+                <div class="tab-content active" id="dashboardTab">
+                    <h3><i class="fas fa-tachometer-alt"></i> System Status</h3>
+                    <div class="status-card">
+                        <div class="status-item">
+                            <span>News Database</span>
+                            <span id="articlesCount" class="status-value">...</span>
+                        </div>
+                        <div class="status-item">
+                            <span>Embedded Articles</span>
+                            <span id="embeddedCount" class="status-value">...</span>
+                        </div>
+                        <div class="status-item">
+                            <span>Latest Article</span>
+                            <span id="latestArticleTime" class="status-value">...</span>
+                        </div>
+                    </div>
+                    
+                    <h3><i class="fas fa-chart-pie"></i> Market Sentiment</h3>
+                    <div class="sentiment-card" id="sentimentCard">
+                        <div class="sentiment-meter">
+                            <div class="meter">
+                                <div class="meter-value" id="fearGreedValue"></div>
+                            </div>
+                            <div class="meter-labels">
+                                <span>Extreme Fear</span>
+                                <span>Fear</span>
+                                <span>Neutral</span>
+                                <span>Greed</span>
+                                <span>Extreme Greed</span>
+                            </div>
+                        </div>
+                        <div class="sentiment-info">
+                            <p>Current sentiment: <span id="sentimentText">Loading...</span></p>
+                            <p>Value: <span id="sentimentValue">--</span>/100</p>
+                        </div>
+                    </div>
+                    
+                    <h3><i class="fas fa-coins"></i> Top Coins</h3>
+                    <div class="coins-table-container">
+                        <table class="coins-table" id="coinsTable">
+                            <thead>
+                                <tr>
+                                    <th>Coin</th>
+                                    <th>Price (USD)</th>
+                                    <th>24h Change</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="3" class="loading-message">Loading top coins...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="newsTab">
+                    <h3><i class="fas fa-newspaper"></i> Latest Crypto News</h3>
+                    <div class="news-filter">
+                        <input type="text" id="newsSearch" placeholder="Filter news...">
+                        <button id="refreshNews"><i class="fas fa-sync-alt"></i></button>
+                    </div>
+                    <div class="news-list" id="newsList">
+                        <p class="loading-message">Loading latest news...</p>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="settingsTab">
+                    <h3><i class="fas fa-cog"></i> Assistant Settings</h3>
+                    <div class="settings-section">
+                        <div class="setting-item">
+                            <label for="resultCount">Max search results:</label>
+                            <div class="setting-control">
+                                <input type="range" id="resultCount" min="1" max="10" value="5">
+                                <span id="resultCountValue">5</span>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <label for="temperature">Response creativity:</label>
+                            <div class="setting-control">
+                                <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.3">
+                                <span id="temperatureValue">0.3</span>
+                            </div>
+                        </div>
+                        <button id="saveSettings" class="settings-button">Save Settings</button>
+                    </div>
+                    
+                    <h3><i class="fas fa-database"></i> Data Management</h3>
+                    <div class="settings-section">
+                        <button id="triggerCrawl" class="settings-button">
+                            <i class="fas fa-spider"></i> Trigger Manual Crawl
+                        </button>
+                        <div class="setting-info">
+                            Next automatic crawl: <span id="nextCrawlTime">calculating...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="app-footer">
+            <p>Crypto News Assistant &copy; 2025 - Integrated Crawler and RAG System</p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
