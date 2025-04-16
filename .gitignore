@@ -1,24 +1,19 @@
-.DS_Store
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
 
 # Virtual environment
 .venv/
 venv/
 env/
-
-# Python bytecode files
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-.Python
-
-# Output files
-articles.json
-
-# Environment variables
-.env
 
 # IDE specific files
 .idea/
@@ -26,16 +21,60 @@ articles.json
 *.swp
 *.swo
 
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+
 # Logs
 *.log
 logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
 
 # Temporary files
 *.bak
 *.tmp
 .cache/
+tmp_*
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
+# Model files - excluding all model and binary files
+*.safetensors
+*.bin
+*.onnx
+model_*.onnx
+model_qint8_*.onnx
+openvino_model_*.xml
+openvino_model_*.bin
+pytorch_model.bin
+openvino_model.xml
+
+
+# Config files - excluding all config files
+*.json
+config.json
+config_*.json
+meta.json
+data_config.json
+config_sentence_transformer.json
+modules.json
+tokenizer.json
+tokenizer_config.json
+special_tokens_map.json
+sentence_bert_config.json
+
+# Other files to exclude
+.lock
+.gitattributes
+vocab.txt
+
+# Keep critical files
+!requirements.txt
+!setup.py
+!app.py
+!README.md
