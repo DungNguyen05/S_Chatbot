@@ -93,6 +93,10 @@ CHUNK_OVERLAP = _parse_int(os.getenv("CHUNK_OVERLAP"), 200)
 USE_QUERY_EXPANSION = _parse_bool(os.getenv("USE_QUERY_EXPANSION", "true"))
 USE_RERANKING = _parse_bool(os.getenv("USE_RERANKING", "true"))
 
+# HuggingFace Tokenizers settings
+TOKENIZERS_PARALLELISM = _parse_bool(os.getenv("TOKENIZERS_PARALLELISM", "false"))
+# Already set at the top: os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Server Configuration
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = _parse_int(os.getenv("PORT"), 8000)

@@ -1,5 +1,6 @@
 # api/routes.py - Enhanced API routes for integrated system
 import logging
+import sys
 import subprocess
 import os
 from fastapi import APIRouter, HTTPException, Depends, Cookie, Response, BackgroundTasks
@@ -12,7 +13,7 @@ from api.models import (
     ChatRequest, ChatResponse, SearchResult
 )
 from api.dependencies import get_document_manager, get_chatbot, validate_openai_key
-from integration_manager import check_embedding_status
+from integration_manager import check_embedding_status, get_recent_articles, get_article_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -137,3 +138,81 @@ async def clear_session(
     response.delete_cookie(key="session_id")
     
     return {"message": "Session cleared successfully"}
+
+# New endpoint for articles
+@router.get("/articles")
+async def get_articles(limit: int = 10, offset: int = 0):
+    """Get recent articles from the database"""
+    try:
+        articles = get_recent_articles(limit, offset)
+        return {"articles": articles}
+    except Exception as e:
+        logger.error(f"Error getting articles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# New endpoint for a specific article
+@router.get("/articles/{article_id}")
+async def get_article(article_id: int):
+    """Get a specific article by ID"""
+    try:
+        article = get_article_by_id(article_id)
+        if not article:
+            raise HTTPException(status_code=404, detail="Article not found")
+        return article
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting article {article_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# New endpoint for fear and greed index
+@router.get("/fear_and_greed")
+async def get_fear_and_greed(limit: int = 1):
+    """Get the fear and greed index data"""
+    try:
+        from database import connect_db
+        
+        conn = connect_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT * FROM fear_and_greed
+            ORDER BY update_time DESC
+            LIMIT %s
+        """, (limit,))
+        
+        fear_and_greed = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return {"fear_and_greed": fear_and_greed}
+    except Exception as e:
+        logger.error(f"Error getting fear and greed index: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# New endpoint for top coins
+@router.get("/coins")
+async def get_coins(limit: int = 5):
+    """Get top coins data"""
+    try:
+        from database import connect_db
+        
+        conn = connect_db()
+        cursor = conn.cursor(dictionary=True)
+        
+        cursor.execute("""
+            SELECT * FROM coin_data
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (limit,))
+        
+        coins = cursor.fetchall()
+        
+        cursor.close()
+        conn.close()
+        
+        return {"coins": coins}
+    except Exception as e:
+        logger.error(f"Error getting coins: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

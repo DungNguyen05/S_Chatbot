@@ -15,13 +15,13 @@ import signal
 import psutil
 from pathlib import Path
 
-def create_chrome_driver(headless=True, binary_path=None):
+def create_chrome_driver(headless=True, binary_path=None, terminate_chrome=False):
     """
     Creates a Chrome WebDriver with robust handling of the 'user data directory already in use' error.
     
     This implementation uses multiple strategies to ensure this specific error is resolved:
     1. Creates truly unique user data directories with randomized paths
-    2. Forcefully terminates all Chrome processes before initialization
+    2. Optionally terminates all Chrome processes before initialization
     3. Uses specific Chrome command line flags to prevent directory locking
     4. Implements proper permission handling for the temporary directories
     5. Sanitizes paths to avoid any special character issues
@@ -29,6 +29,7 @@ def create_chrome_driver(headless=True, binary_path=None):
     Args:
         headless (bool): Whether to run Chrome in headless mode
         binary_path (str, optional): Path to Chrome executable. Auto-detected if None.
+        terminate_chrome (bool): Whether to terminate existing Chrome processes. Default is False.
         
     Returns:
         webdriver.Chrome: Initialized Chrome WebDriver instance or None if failed
@@ -45,9 +46,12 @@ def create_chrome_driver(headless=True, binary_path=None):
     
     logger.info("Initializing Chrome WebDriver with user data directory fix")
     
-    # STEP 1: Aggressively terminate ALL existing Chrome and chromedriver processes
-    # This is crucial for preventing the "user data directory already in use" error
-    _terminate_all_chrome_processes(logger)
+    # STEP 1: Optionally terminate Chrome processes
+    if terminate_chrome:
+        logger.info("Terminating existing Chrome processes as requested")
+        _terminate_all_chrome_processes(logger)
+    else:
+        logger.info("Skipping Chrome process termination (terminate_chrome=False)")
     
     # STEP 2: Locate Chrome binary if not provided
     if not binary_path:
@@ -161,13 +165,15 @@ def create_chrome_driver(headless=True, binary_path=None):
         # Specific handling for the "user data directory already in use" error
         if "user data directory is already in use" in error_message:
             logger.error("Detected 'user data directory already in use' error")
-            logger.info("Attempting more aggressive process cleanup...")
             
-            # Try more aggressive cleanup and retry once
-            _terminate_all_chrome_processes(logger, force=True)
-            
-            # Wait a moment for resources to be fully released
-            time.sleep(3)
+            # Only attempt aggressive process cleanup if terminate_chrome is True
+            if terminate_chrome:
+                logger.info("Attempting more aggressive process cleanup...")
+                _terminate_all_chrome_processes(logger, force=True)
+                time.sleep(3)  # Wait for resources to be fully released
+            else:
+                logger.warning("Not attempting process cleanup because terminate_chrome=False")
+                logger.info("Consider setting terminate_chrome=True if you continue to experience issues")
             
             try:
                 # Clean up the failed directory

@@ -37,19 +37,31 @@ def get_embeddings_manager():
     from app import embeddings_manager
     return embeddings_manager
 
-def update_embeddings():
+def update_embeddings(standalone_mode=False):
     """Update the vector store with new articles from the database
     
     This function:
     1. Checks for new unembedded articles in the database
     2. Processes and embeds them
     3. Adds them to the vector store
+    
+    Args:
+        standalone_mode (bool): Set to True when running from cron job with no app context
+        
+    Returns:
+        int: Number of articles embedded
     """
     from database import connect_db
     
     try:
-        # Get necessary components
-        document_manager = get_document_manager()
+        # Only try to get document_manager if not in standalone mode
+        document_manager = None
+        if not standalone_mode:
+            try:
+                document_manager = get_document_manager()
+            except ImportError:
+                logger.warning("Running in standalone mode (document_manager not available)")
+                standalone_mode = True
         
         # Get unembedded articles from the database
         conn = connect_db()
@@ -71,49 +83,87 @@ def update_embeddings():
             conn.close()
             return 0
         
-        # Prepare documents for the vector store
-        documents = []
-        article_ids = []
-        
-        for article in articles:
-            # Create document with combined title and content
-            doc_content = f"{article['title']}\n\n{article['summary']}\n\n{article['content']}"
-            doc_source = f"{article['source']} ({article['published_at']})"
+        # In standalone mode, just mark the articles as embedded without adding to vector store
+        if standalone_mode:
+            logger.warning("Running in standalone mode - marking articles as embedded without adding to vector store")
+            # Set embedded flag to 1 for all found articles
+            article_ids = [article['id'] for article in articles]
+            for article_id in article_ids:
+                cursor.execute("UPDATE articles SET embedded = 1 WHERE id = %s", (article_id,))
             
-            # Add metadata
-            metadata = {
-                "db_id": article['id'],
-                "currencies": article['currencies'] or "Unknown",
-                "published_at": str(article['published_at'])
-            }
-            
-            # Add to documents list
-            documents.append({
-                "content": doc_content,
-                "source": doc_source,
-                "metadata": metadata
-            })
-            
-            article_ids.append(article['id'])
-        
-        # Add documents to vector store
-        if documents:
-            doc_ids = document_manager.bulk_add_documents(documents)
-            logger.info(f"Added {len(doc_ids)} documents to vector store")
-            
-            # Mark articles as embedded in the database
-            cursor.executemany(
-                "UPDATE articles SET embedded = 1 WHERE id = %s",
-                [(article_id,) for article_id in article_ids]
-            )
             conn.commit()
+            logger.info(f"Marked {len(article_ids)} articles as embedded in standalone mode")
+            cursor.close()
+            conn.close()
+            return len(articles)
             
-            logger.info(f"Marked {len(article_ids)} articles as embedded in the database")
-        
-        cursor.close()
-        conn.close()
-        return len(documents)
-        
+        # If we have a document manager, proceed with normal embedding
+        if document_manager:
+            # Prepare documents for the vector store
+            documents = []
+            article_ids = []
+            
+            for article in articles:
+                try:
+                    # Create document with combined title and content
+                    doc_content = f"{article['title']}\n\n{article['summary']}\n\n{article['content']}"
+                    doc_source = f"{article['source']} ({article['published_at']})"
+                    
+                    # Add metadata
+                    metadata = {
+                        "db_id": article['id'],
+                        "currencies": article['currencies'] or "Unknown",
+                        "published_at": str(article['published_at'])
+                    }
+                    
+                    # Add to documents list
+                    documents.append({
+                        "content": doc_content,
+                        "source": doc_source,
+                        "metadata": metadata
+                    })
+                    
+                    article_ids.append(article['id'])
+                except Exception as e:
+                    logger.error(f"Error processing article {article['id']}: {e}")
+                    # Continue with other articles
+                    continue
+            
+            # Add documents to vector store
+            if documents:
+                try:
+                    doc_ids = document_manager.bulk_add_documents(documents)
+                    logger.info(f"Added {len(doc_ids)} documents to vector store")
+                    
+                    # Mark articles as embedded in the database
+                    for article_id in article_ids:
+                        cursor.execute(
+                            "UPDATE articles SET embedded = 1 WHERE id = %s",
+                            (article_id,)
+                        )
+                    
+                    conn.commit()
+                    logger.info(f"Marked {len(article_ids)} articles as embedded in the database")
+                    
+                    cursor.close()
+                    conn.close()
+                    return len(documents)
+                except Exception as e:
+                    logger.error(f"Error adding documents to vector store: {e}")
+                    cursor.close()
+                    conn.close()
+                    return 0
+            else:
+                logger.info("No documents to add to vector store")
+                cursor.close()
+                conn.close()
+                return 0
+        else:
+            logger.error("Document manager is not available")
+            cursor.close()
+            conn.close()
+            return 0
+            
     except Exception as e:
         logger.error(f"Error updating embeddings: {e}")
         return 0
