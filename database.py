@@ -110,9 +110,34 @@ def setup_database(reset_data=False):
 
     # Add indexes for better performance with the RAG system
     try:
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_articles_embedded ON articles(embedded)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at)")
+        # Check if index already exists to avoid duplicate index errors
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM information_schema.statistics 
+            WHERE table_schema = DATABASE() 
+            AND table_name = 'articles' 
+            AND index_name = 'idx_articles_embedded'
+        """)
+        exists = cursor.fetchone()[0]
+        
+        if not exists:
+            cursor.execute("CREATE INDEX idx_articles_embedded ON articles(embedded)")
+        
+        # Check if published_at index exists
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM information_schema.statistics 
+            WHERE table_schema = DATABASE() 
+            AND table_name = 'articles' 
+            AND index_name = 'idx_articles_published_at'
+        """)
+        exists = cursor.fetchone()[0]
+        
+        if not exists:
+            cursor.execute("CREATE INDEX idx_articles_published_at ON articles(published_at)")
+        
         conn.commit()
+        print("✅ Indexes created successfully")
     except Exception as e:
         print(f"⚠️ Warning: Could not create indexes: {e}")
 
