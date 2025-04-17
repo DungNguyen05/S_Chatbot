@@ -44,62 +44,59 @@ from database import setup_database, connect_db
 from config import COIN_NUMBER, ARTICLE_EN, ARTICLE_VI
 from integration_manager import update_embeddings
 
+# Find and update the run_coin68_crawler function in cron_job.py
 def run_coin68_crawler(driver):
     """Run the Coin68 crawler to fetch Vietnamese articles"""
     logger.info("Running Coin68 crawler...")
     
     try:
-        # Extract the user data directory from the driver
-        user_data_dir = None
-        for option in driver.options.arguments:
-            if option.startswith('--user-data-dir='):
-                user_data_dir = option.split('=', 1)[1]
-                break
+        # Import required modules for Scrapy
+        from scrapy.crawler import CrawlerProcess
+        from scrapy.utils.project import get_project_settings
+        from coin68_crawler.coin68_crawler.spiders.fetch_article_content import ArticleSpider
+        import json
         
-        if not user_data_dir:
-            logger.error("Could not find user data directory in Chrome options")
+        # Get project settings
+        settings = get_project_settings()
+        # Override some settings to ensure proper operation
+        settings.update({
+            'LOG_ENABLED': False,
+            'FEEDS': {
+                'articles.json': {
+                    'format': 'json',
+                    'encoding': 'utf8',
+                    'indent': 4,
+                    'overwrite': True
+                }
+            }
+        })
+        
+        # Run the crawler using CrawlerProcess
+        logger.info(f"Crawling {ARTICLE_VI} Vietnamese articles using Scrapy...")
+        process = CrawlerProcess(settings)
+        process.crawl(ArticleSpider, target_count=ARTICLE_VI, driver=driver)
+        process.start(stop_after_crawl=True)  # Important: This blocks until crawling is finished
+        
+        # Load the generated JSON file
+        try:
+            with open('articles.json', 'r', encoding='utf-8') as file:
+                content = file.read().strip()
+                if content:
+                    articles = json.loads(content)
+                    logger.info(f"Loaded {len(articles)} articles from articles.json")
+                    
+                    # Save articles to database
+                    from crawler.coin_articles_source import save_articles
+                    save_articles(articles)
+                    return True
+                else:
+                    logger.warning("articles.json was empty")
+                    return False
+        except FileNotFoundError:
+            logger.error("articles.json was not created by the crawler")
             return False
-        
-        # Run the crawler using subprocess
-        logger.info("Running Coin68 crawler via subprocess...")
-        scrapy_path = os.path.join(project_dir, "coin68_crawler")
-        
-        if not os.path.exists(scrapy_path):
-            logger.error(f"Coin68 crawler directory not found at {scrapy_path}")
-            return False
-        
-        # Set up environment variables including the Chrome profile path
-        env = os.environ.copy()
-        env["CHROME_USER_DATA_DIR"] = user_data_dir
-        
-        # Run the crawler
-        command = [
-            sys.executable, 
-            "-m", 
-            "scrapy", 
-            "crawl", 
-            "coin68_content", 
-            "-a", 
-            f"target_count={ARTICLE_VI}",
-            "-a",
-            f"user_data_dir={user_data_dir}"
-        ]
-        
-        result = subprocess.run(
-            command,
-            cwd=scrapy_path,
-            env=env,
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode == 0:
-            logger.info(f"Coin68 crawler subprocess completed successfully")
-            logger.info(f"Output: {result.stdout}")
-            return True
-        else:
-            logger.error(f"Coin68 crawler subprocess failed with code {result.returncode}")
-            logger.error(f"Error: {result.stderr}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing articles.json: {e}")
             return False
                 
     except Exception as e:
@@ -107,6 +104,7 @@ def run_coin68_crawler(driver):
         logger.error(traceback.format_exc())
         return False
 
+# Now fix the call to this function in run_cron_job
 def run_cron_job():
     """Main function to run the crawler and process data"""
     start_time = time.time()
@@ -141,7 +139,8 @@ def run_cron_job():
             
             # 4. Crawl Coin68 (Vietnamese articles)
             logger.info(f"Fetching {ARTICLE_VI} Vietnamese articles from Coin68...")
-            success = run_coin68_crawler()  # No longer passing the driver
+            # FIX: Pass the driver to the function
+            success = run_coin68_crawler(driver)
             if success:
                 logger.info("Coin68 crawler completed successfully")
             else:
