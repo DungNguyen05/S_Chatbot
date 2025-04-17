@@ -67,6 +67,7 @@ tokenizer.json
 tokenizer_config.json
 special_tokens_map.json
 sentence_bert_config.json
+articles.json
 
 # Other files to exclude
 .lock
