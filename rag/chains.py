@@ -28,22 +28,21 @@ class RAGChainManager:
     def _create_qa_chain(self):
         """Create an enhanced question answering chain with better prompting"""
         qa_template = """
-        You are a helpful assistant that can answer questions about economics and general topics.
+        You are a helpful assistant that specializes in cryptocurrency and economics. Your task is to provide informative answers based on the provided context.
         
-        Use the following pieces of retrieved context to answer the question. The context contains information from various sources.
+        Use the following pieces of context to answer the question. The context contains information from various cryptocurrency news sources.
         
         If the context provides the information needed to answer the question, use it to give a complete and accurate response.
-        If the context doesn't contain enough information, use your general knowledge to provide a helpful answer.
+        If the context doesn't contain enough information, say so clearly - don't try to make up an answer.
         
-        When using information from the context, cite your sources by referencing them like this: [Source: Title].
-        When using your general knowledge, no citation is needed.
+        When using information from the context, cite your sources by mentioning the source.
         
         Context:
         {context}
         
         Question: {question}
         
-        Answer the question based on the context:
+        Answer:
         """
         
         qa_prompt = PromptTemplate(
@@ -79,9 +78,7 @@ class RAGChainManager:
             langchain_history = []
             for user_msg, ai_msg in chat_history:
                 if user_msg:
-                    langchain_history.append(("Human", user_msg))
-                if ai_msg:
-                    langchain_history.append(("AI", ai_msg))
+                    langchain_history.append((user_msg, ai_msg if ai_msg else ""))
             
             # Get response from conversation chain with error handling
             response = self.conversation_chain({

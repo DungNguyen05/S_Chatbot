@@ -27,14 +27,7 @@ class Chatbot:
         self.session_histories = {}  # Store chat history by session ID
         
         # Minimum relevance score threshold
-        self.relevance_threshold = 0.75
-        
-        # Greetings and common non-RAG queries
-        self.common_queries = [
-            "hi", "hello", "hey", "what's up", "how are you", "greetings", 
-            "thanks", "thank you", "goodbye", "bye", "see you", "help",
-            "what can you do", "who are you", "your name"
-        ]
+        self.relevance_threshold = 0
         
         # Initialize OpenAI LLM
         if not config.OPENAI_API_KEY:
@@ -91,38 +84,47 @@ class Chatbot:
                     prompt=general_prompt
                 )
                 
-                # Create a relevance checking chain for determining when to use RAG vs general knowledge
-                relevance_template = """
-                Your task is to determine whether a question requires specific crypto or economics knowledge.
-                Score the relevance on a scale from 0.0 to 1.0, where:
-                - 1.0 means it definitely requires specific crypto/economics knowledge
-                - 0.0 means it's a general or conversational question
+                # Create a relevance checking chain for evaluating if the RAG answer is relevant to the query
+                relevance_checking_template = """
+                Your task is to determine whether an answer is directly relevant to the question asked.
+                Score the relevance on a scale from a 0.0 to 1.0, where:
+                - 1.0 means the answer is highly relevant and directly addresses the question
+                - 0.0 means the answer is not at all relevant to the question
                 
                 Examples:
-                "Hi there" -> 0.0
-                "How are you?" -> 0.0
-                "What's the price of Bitcoin?" -> 1.0
-                "Explain DeFi protocols" -> 0.9
-                "Will crypto recover in the future?" -> 0.8
-                "Describe NFT use cases" -> 0.9
-                "What's your favorite color?" -> 0.0
+                Question: "What's the price of Bitcoin?"
+                Answer: "As of today, Bitcoin is trading at approximately $50,000 per coin."
+                Score: 1.0 (Directly answers the question)
                 
-                Current Question: {question}
+                Question: "What are the recent developments in DeFi protocols?"
+                Answer: "Sorry, I don't have specific information about recent DeFi protocol developments."
+                Score: 0.2 (Acknowledges the topic but doesn't provide substantive information)
                 
-                First, identify if this is a general/conversational question or a crypto/economics question.
+                Question: "Will crypto recover in the future?"
+                Answer: "While I cannot predict the future with certainty, many analysts believe the cryptocurrency market is cyclical..."
+                Score: 0.8 (Addresses the question thoughtfully within limitations)
+                
+                Question: "What's your favorite color?"
+                Answer: "I don't have preferences or favorites as I'm an AI assistant."
+                Score: 1.0 (Direct and appropriate response to the question)
+                
+                Question: {question}
+                Answer: {answer}
+                
+                First, analyze how directly the answer addresses the specific question asked.
                 Then provide your score as a decimal number between 0.0 and 1.0.
                 
                 Relevance Score (just the number):
                 """
                 
-                relevance_prompt = PromptTemplate(
-                    input_variables=["question"],
-                    template=relevance_template
+                relevance_checking_prompt = PromptTemplate(
+                    input_variables=["question", "answer"],
+                    template=relevance_checking_template
                 )
                 
-                self.relevance_chain = LLMChain(
+                self.relevance_checking_chain = LLMChain(
                     llm=self.llm,
-                    prompt=relevance_prompt
+                    prompt=relevance_checking_prompt
                 )
                 
                 logger.info(f"Chatbot initialized with {self.model_name}")
@@ -132,7 +134,7 @@ class Chatbot:
                 self.llm = None
                 self.rag_chain = None
                 self.general_chain = None
-                self.relevance_chain = None
+                self.relevance_checking_chain = None
     
     def get_session_history(self, session_id: str = "default") -> List[Tuple[str, str]]:
         """Get chat history for a session"""
@@ -209,33 +211,14 @@ class Chatbot:
         """Count the number of tokens in a text string using the tokenizer"""
         return len(self.tokenizer.encode(text))
     
-    def _is_common_query(self, question: str) -> bool:
-        """Check if a query is a common non-RAG query like greetings"""
-        question_lower = question.lower().strip()
-        # Check if it's in our list of common queries
-        for query in self.common_queries:
-            if query in question_lower or question_lower in query:
-                return True
-        
-        # Check if it's very short (likely conversational)
-        if len(question_lower.split()) <= 2:
-            return True
-            
-        return False
-    
-    async def _check_relevance(self, question: str) -> float:
+    async def _check_answer_relevance(self, question: str, answer: str) -> float:
         """
-        Check if a question is relevant for RAG vs general knowledge.
-        
-        Returns a relevance score between 0.0 and 1.0
+        Check if the RAG-generated answer is relevant to the question.
+        Returns a relevance score between 0.0 and 1.0.
         """
-        # Quick check for common queries
-        if self._is_common_query(question):
-            return 0.0
-            
         try:
-            # Use the relevance chain to get a score
-            response = self.relevance_chain.run(question=question)
+            # Use the relevance checking chain to get a score
+            response = self.relevance_checking_chain.run(question=question, answer=answer)
             
             # Parse the response to extract just the score
             try:
@@ -252,24 +235,24 @@ class Chatbot:
                 # Ensure it's in range 0.0-1.0
                 relevance_score = max(0.0, min(1.0, relevance_score))
                 
-                logger.info(f"Relevance score for '{question}': {relevance_score}")
+                logger.info(f"Answer relevance score: {relevance_score}")
                 return relevance_score
                 
             except ValueError:
-                # If parsing fails, default to using RAG
+                # If parsing fails, default to a middle value
                 logger.warning(f"Could not parse relevance score: '{response}', defaulting to 0.5")
                 return 0.5
                 
         except Exception as e:
-            logger.error(f"Error checking relevance: {e}")
-            # Default to 0.5 to err on the side of caution
+            logger.error(f"Error checking answer relevance: {e}")
+            # Default to 0.5 in case of errors
             return 0.5
     
     async def generate_answer(self, 
                         question: str, 
                         chat_history: Optional[List[Dict]] = None, 
                         session_id: str = "default") -> Tuple[str, List[Dict]]:
-        """Generate an answer using either RAG or general knowledge based on query needs"""
+        """Generate an answer using RAG workflow"""
         # Get current session history
         session_history = self.get_session_history(session_id)
         
@@ -287,33 +270,26 @@ class Chatbot:
         logger.info(f"Chat history uses {history_tokens} tokens")
         
         try:
-            # Decision logic: Determine if we need RAG or can use general knowledge
-            relevance_score = await self._check_relevance(question)
-            
-            # Track the answer and sources
-            answer = ""
-            sources = []
-            
-            # Use RAG if relevance score is above threshold
-            needs_rag = relevance_score >= self.relevance_threshold
             have_documents = len(self.document_manager.get_all_documents()) > 0
             
-            # Only use RAG if we have documents and the query is relevant
-            if needs_rag and have_documents:
-                logger.info(f"Using RAG for this query (relevance: {relevance_score})")
+            # Step 1: First, always try the RAG approach if we have documents
+            if have_documents:
+                logger.info("Using RAG to generate an initial response")
+                
                 # Use callback to track token usage
                 with get_openai_callback() as cb:
                     # Get response from RAG chain
-                    response = self.rag_chain.generate_response(question, recent_history)
+                    rag_response = self.rag_chain.generate_response(question, recent_history)
                     
                     # Log token usage
                     logger.info(f"RAG tokens used: {cb.total_tokens} (Prompt: {cb.prompt_tokens}, Completion: {cb.completion_tokens})")
                 
                 # Extract answer and source documents
-                answer = response.get("answer", "")
-                source_docs = response.get("source_documents", [])
+                rag_answer = rag_response.get("answer", "")
+                source_docs = rag_response.get("source_documents", [])
                 
                 # Extract source information from documents
+                sources = []
                 seen_doc_ids = set()
                 
                 for doc in source_docs:
@@ -328,40 +304,41 @@ class Chatbot:
                             "source": source
                         })
                 
-                # Check if RAG gave a good answer (has sources and doesn't indicate insufficient info)
-                is_good_rag_answer = (
-                    sources and 
-                    "I don't have enough information" not in answer and 
-                    "don't have specific information" not in answer
+                # Step 2: Check if we have sources and if the answer is relevant
+                if sources:
+                    # Step 3: Evaluate the relevance of the answer to the question
+                    relevance_score = await self._check_answer_relevance(question, rag_answer)
+                    
+                    # Step 4: If the answer is relevant enough, use it
+                    if relevance_score >= self.relevance_threshold:
+                        logger.info(f"Using RAG answer (relevance score: {relevance_score})")
+                        
+                        # Update session history with this interaction
+                        self.update_session_history(session_id, question, rag_answer)
+                        
+                        return rag_answer, sources
+                    else:
+                        logger.info(f"RAG answer not relevant enough (score: {relevance_score}), falling back to general knowledge")
+                else:
+                    logger.info("No relevant sources found, falling back to general knowledge")
+            else:
+                logger.info("No documents available, using general knowledge")
+            
+            # Step 5: Fallback to general knowledge if RAG didn't work or wasn't relevant
+            with get_openai_callback() as cb:
+                answer = self.general_chain.run(
+                    chat_history=history_text,
+                    question=question
                 )
                 
-                # If RAG didn't provide a good answer, fall back to general knowledge
-                if not is_good_rag_answer:
-                    logger.info("RAG didn't provide a good answer, falling back to general knowledge")
-                    needs_rag = False
-            else:
-                logger.info(f"Using general knowledge (relevance: {relevance_score})")
-                needs_rag = False
-            
-            # Use general knowledge if not using RAG or if RAG failed
-            if not needs_rag:
-                # Use callback to track token usage
-                with get_openai_callback() as cb:
-                    answer = self.general_chain.run(
-                        chat_history=history_text,
-                        question=question
-                    )
-                    
-                    # Log token usage
-                    logger.info(f"General tokens used: {cb.total_tokens} (Prompt: {cb.prompt_tokens}, Completion: {cb.completion_tokens})")
-                    
-                # Clear sources since we're not using RAG
-                sources = []
+                # Log token usage
+                logger.info(f"General tokens used: {cb.total_tokens} (Prompt: {cb.prompt_tokens}, Completion: {cb.completion_tokens})")
             
             # Update session history with this interaction
             self.update_session_history(session_id, question, answer)
             
-            return answer, sources
+            # Return general knowledge answer with no sources
+            return answer, []
             
         except Exception as e:
             logger.error(f"Error generating answer: {e}")

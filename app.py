@@ -25,7 +25,7 @@ from core.chatbot import Chatbot
 from web.templates_manager import create_templates
 from database import setup_database
 from integration_manager import check_embedding_status
-
+from config import RESET_DATABASE
 # Import routers
 from api.routes import router as api_router
 from web.routes import router as web_router
@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
     # Startup logic
     try:
         # Set up the database
-        setup_database(reset_data=False)
+        setup_database(reset_data=RESET_DATABASE)
         
         # Verify templates exist
         create_templates()

@@ -1,86 +1,117 @@
 # Crypto News Assistant
 
-An integrated system that combines a cryptocurrency news crawler with an advanced RAG-based chatbot. This system automatically crawls for the latest crypto news every 15 minutes and makes it available for intelligent retrieval and response generation.
+A comprehensive crypto news assistant with integrated web crawler and RAG-based chatbot. The system automatically collects real-time cryptocurrency data and news, processes it using natural language processing, and makes it accessible through an intelligent conversational interface.
 
 ## Features
 
-- **Automated News Collection**: Crawls cryptocurrency news sources every 15 minutes
-- **Real-time Market Data**: Fetches cryptocurrency prices and market sentiment
-- **Intelligent RAG System**: Uses relevance-based retrieval to provide accurate answers
-- **Context-Aware Responses**: Understands conversation context and query relevance
-- **Modern Web Interface**: Dashboard with latest news, sentiment indicators, and more
+- **Automated News Collection**: Crawls multiple cryptocurrency news sources every 15 minutes (configurable)
+- **Multi-language Support**: Handles both English and Vietnamese news sources
+- **Market Data Integration**: Collects real-time coin data and market sentiment indicators
+- **Advanced RAG Chatbot**: Uses relevance-based document retrieval and answer checking
+- **Responsive Web Interface**: Dashboard with latest news, charts, and user-friendly chat
 
-## System Architecture
+## System Components
 
 The system consists of three main components:
 
-1. **Crawler System**: Automatically fetches news articles, coin data, and market sentiment
-2. **RAG System**: Processes, embeds, and retrieves relevant news based on user queries
-3. **Web Interface**: Provides a user-friendly way to interact with the system
+1. **Crawler System**:
+   - Multiple data sources (CoinMarketCap, CryptoPanic, Coin68)
+   - Scheduled crawling with configurable intervals
+   - Content extraction and processing
+
+2. **RAG System**:
+   - Local embedding model for document vectorization
+   - Vector-based similarity search
+   - Advanced relevance checking for high-quality responses
+   - Seamless fallback to general knowledge
+
+3. **Web Interface**:
+   - Interactive chat with history management
+   - Market sentiment dashboard
+   - Real-time coin data
+   - Latest news with search functionality
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.8 or later
+- Python 3.11 or later
 - MySQL database
 - Chrome browser (for web scraping)
 
-### Setup
+### Step 1: Clone the Repository
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/crypto-news-assistant.git
-   cd crypto-news-assistant
-   ```
+```bash
+git clone https://github.com/yourusername/crypto-news-assistant.git
+cd crypto-news-assistant
+```
 
-2. Run the setup script:
-   ```
-   python setup.py
-   ```
-   
-   This will:
-   - Create a virtual environment
-   - Set up configuration in `.env`
-   - Configure the cron job for automated crawling
+### Step 2: Run the Setup Script
 
-3. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+The setup script will:
+- Configure your environment variables
+- Set up virtual environment
+- Configure the cron job for automated crawling
 
-4. Initialize the database:
-   ```
-   python migrations/migrate_database.py
-   ```
+```bash
+python3.11 setup.py
+```
 
-5. Start the application:
-   ```
-   python app.py
-   ```
+Follow the prompts to configure your database connections, API keys, and crawler settings.
 
-6. Access the web interface at http://localhost:8000
+### Step 3: Install Dependencies
+
+Activate the virtual environment and install the required dependencies:
+
+```bash
+# Activate virtual environment
+source .venv/bin/activate  # On Linux/Mac
+# OR
+.venv\Scripts\activate     # On Windows
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Step 4: Start the Application
+
+```bash
+python app.py
+```
+
+Then access the web interface at http://localhost:8000
 
 ## Configuration
 
-All configuration is handled in the `.env` file. Key settings include:
+All configuration is handled through the `.env` file created during setup. Key settings include:
 
-- Database connection details
-- API keys for CoinMarketCap, CryptoPanic, etc.
-- Crawler settings (number of articles, coins, etc.)
-- RAG system settings (embedding model, search results, etc.)
+- **Database settings**: Connection parameters for MySQL
+- **API keys**: Keys for CoinMarketCap, CryptoPanic, Diffbot, and OpenAI
+- **Crawler settings**:
+  - `COIN_NUMBER`: Number of coins to track (default: 1000)
+  - `ARTICLE_EN`: Number of English articles to crawl (default: 50)
+  - `ARTICLE_VI`: Number of Vietnamese articles to crawl (default: 200)
+  - `CRAWL_INTERVAL_MINUTES`: How often to run the crawler (default: 15 minutes)
+  - `RESET_DATABASE`: Whether to reset the database on startup (default: false)
+- **RAG settings**:
+  - `EMBEDDING_MODEL`: Model to use for text embeddings
+  - `OPENAI_CHAT_MODEL`: OpenAI model for text generation
+  - `MAX_SEARCH_RESULTS`: Number of documents to retrieve per query
+  - `TEMPERATURE`: Creativity parameter for the LLM
 
-## Usage
+## Manual Crawling
 
-### Web Interface
+You can trigger a manual crawl at any time:
 
-The web interface provides:
-- A chat interface to ask questions about crypto news
-- A dashboard with market data and sentiment indicators
-- Latest news articles
-- System settings
+```bash
+python cron_job.py
+```
 
-### Chat Examples
+Or use the "Trigger Manual Crawl" button in the web interface.
+
+## Usage Examples
+
+### Asking About Crypto News
 
 You can ask the assistant questions like:
 - "What's the current price of Bitcoin?"
@@ -88,87 +119,49 @@ You can ask the assistant questions like:
 - "Explain the recent market trends in DeFi"
 - "What's causing the current market sentiment?"
 
-### Manual Crawling
+### Using the Dashboard
 
-You can trigger a manual crawl from the web interface or by running:
-```
-python cron_job.py
-```
-
-## Cron Job Setup
-
-The system is designed to run a crawler job every 15 minutes. This is set up automatically by the setup script on Unix-based systems. On Windows, you'll need to use Task Scheduler.
-
-The cron job runs:
-```
-*/15 * * * * /path/to/python /path/to/crypto-news-assistant/cron_job.py >> /path/to/logs/crawler.log 2>&1
-```
-
-## Project Structure
-
-```
-crypto_news_assistant/
-├── api/                      # API endpoints
-├── core/                     # Core RAG components
-├── crawler/                  # Crawler components
-├── coin68_crawler/           # Specific crawler for Coin68
-├── migrations/               # Database migrations
-├── rag/                      # RAG system components
-├── static/                   # Frontend assets
-├── templates/                # HTML templates
-├── web/                      # Web routes
-├── app.py                    # Main application
-├── config.py                 # Configuration
-├── cron_job.py               # Crawler automation
-├── data_processor.py         # Data processing
-├── database.py               # Database access
-├── integration_manager.py    # Integration between components
-├── setup.py                  # Setup script
-└── requirements.txt          # Dependencies
-```
+The dashboard provides:
+- Real-time market sentiment indicator
+- Top cryptocurrency prices and trends
+- System status and embedding statistics
+- Latest news articles with search functionality
 
 ## Customization
 
 ### Adding New News Sources
 
-To add a new news source, you'll need to:
-1. Create a new crawler module in the `crawler/` directory
-2. Implement the fetching and parsing logic
-3. Update the `cron_job.py` script to include the new source
+To add a new news source, create a new crawler module in the `crawler/` directory and import it in `cron_job.py`.
 
-### Modifying the RAG System
+### Modifying RAG Behavior
 
 The RAG system can be customized by:
-1. Changing the embedding model in `config.py`
-2. Modifying the relevance checking in `core/chatbot.py`
-3. Adjusting the search parameters in `rag/vector_store.py`
+- Changing embedding models in `.env`
+- Adjusting relevance thresholds in `core/chatbot.py`
+- Modifying document retrieval in `rag/vector_store.py`
 
 ## Troubleshooting
 
-### Database Connection Issues
+### Database Issues
 
 If you encounter database connection issues:
-1. Verify the credentials in `.env`
-2. Ensure MySQL is running
-3. Check if the database exists and is accessible
+1. Verify database credentials in `.env`
+2. Ensure MySQL service is running
+3. Check database logs for errors
 
 ### Crawler Issues
 
 If the crawler isn't working:
 1. Verify Chrome is installed
-2. Check if API keys are valid
-3. Look for errors in the crawler logs
+2. Check if API keys are valid in `.env`
+3. Look for errors in the `logs/crawler.log` file
 
 ### RAG System Issues
 
 If the RAG system isn't providing good answers:
-1. Check if articles are being embedded (see status in dashboard)
-2. Verify embedding model is loading correctly
-3. Adjust relevance threshold in `core/chatbot.py`
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+1. Verify OpenAI API key is valid
+2. Check embedding status in the dashboard
+3. Look for errors in the application logs
 
 ## License
 

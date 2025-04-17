@@ -10,7 +10,7 @@ This script:
 5. Sets up the cron job for automated crawling
 
 Usage:
-    python setup.py
+    python3.11 setup.py
 """
 
 import os
@@ -85,6 +85,8 @@ def setup_env_file():
     coin_number = input("Number of coins to crawl (default: 1000): ") or "1000"
     article_en = input("Number of English articles to crawl (default: 50): ") or "50"
     article_vi = input("Number of Vietnamese articles to crawl (default: 200): ") or "200"
+    reset_db = input("Reset database on startup? (default: False) (true/false): ").lower() or "false"
+    crawl_interval = input("Crawl interval in minutes (default: 15): ") or "15"
     
     # Create .env file with user values
     env_content = f"""# Database Configuration
@@ -103,8 +105,8 @@ OPENAI_API_KEY={openai_api_key}
 COIN_NUMBER={coin_number}
 ARTICLE_EN={article_en}
 ARTICLE_VI={article_vi}
-RESET_DATABASE=False
-CRAWL_INTERVAL_MINUTES=15
+RESET_DATABASE={reset_db}
+CRAWL_INTERVAL_MINUTES={crawl_interval}
 
 # RAG Settings
 EMBEDDING_MODEL=all-MiniLM-L6-v2
@@ -162,14 +164,20 @@ def setup_virtual_env():
         sys.exit(1)
 
 def setup_cron_job():
-    """Set up cron job for automated crawling"""
+    """Set up cron job for automated crawling using settings from .env"""
+    # Load .env for crawl interval
+    from dotenv import load_dotenv
+    load_dotenv(ENV_FILE)
+    
+    crawl_interval = os.getenv("CRAWL_INTERVAL_MINUTES", "15")
+    
     if os.name == 'nt':  # Windows
         print("ℹ️ Cron jobs are not supported on Windows.")
         print("➡️ To run the crawler periodically, you can use Windows Task Scheduler:")
-        print(f"   Create a task that runs {CRON_SCRIPT} every 15 minutes.\n")
+        print(f"   Create a task that runs {CRON_SCRIPT} every {crawl_interval} minutes.\n")
         return
     
-    print("Setting up cron job for automated crawling...")
+    print(f"Setting up cron job for automated crawling every {crawl_interval} minutes...")
     
     # Get absolute paths
     python_path = sys.executable
@@ -179,7 +187,7 @@ def setup_cron_job():
     log_file = log_dir / "crawler.log"
     
     # Create cron job line
-    cron_line = f"*/15 * * * * {python_path} {cron_script_path} >> {log_file} 2>&1\n"
+    cron_line = f"*/{crawl_interval} * * * * {python_path} {cron_script_path} >> {log_file} 2>&1\n"
     
     # Add to crontab
     try:
@@ -189,8 +197,12 @@ def setup_cron_job():
         
         # Check if our job is already there
         if cron_script_path.name in current_crontab:
-            print("ℹ️ Cron job already exists. Skipping...")
-            return
+            print("ℹ️ Cron job already exists. Updating...")
+            # Remove old entry
+            current_crontab = "\n".join([
+                line for line in current_crontab.split("\n") 
+                if cron_script_path.name not in line
+            ])
         
         # Add our job
         new_crontab = current_crontab + cron_line
@@ -206,7 +218,7 @@ def setup_cron_job():
         # Remove temporary file
         temp_file.unlink()
         
-        print(f"✅ Cron job added: Crawler will run every 15 minutes")
+        print(f"✅ Cron job added: Crawler will run every {crawl_interval} minutes")
         print(f"✅ Logs will be written to: {log_file}\n")
     
     except subprocess.CalledProcessError as e:
@@ -245,7 +257,7 @@ def main():
     print("2. Install requirements: pip install -r requirements.txt")
     print("3. Run the application: python app.py")
     print("4. Access the web interface at http://localhost:8000")
-    print("\nThe crawler will run automatically every 15 minutes, or you can run it manually:")
+    print("\nThe crawler will run automatically based on your configured interval, or you can run it manually:")
     print("   python cron_job.py\n")
 
 if __name__ == "__main__":

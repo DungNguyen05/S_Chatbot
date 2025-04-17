@@ -2,7 +2,7 @@
 """
 cron_job.py - Script to automate the news crawler execution on a schedule
 
-This script is designed to be run by a cron job every 15 minutes. It:
+This script is designed to be run by a cron job every N minutes (configurable in .env). It:
 1. Runs the crawler to fetch latest crypto news
 2. Processes the data for the Economic AGENT
 3. Forces embedding of new articles
@@ -21,19 +21,29 @@ import importlib.util
 import subprocess
 from datetime import datetime
 import traceback
-import json
 
 # Add the project directory to the path so we can import modules
 project_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_dir)
 
+# Disable tokenizers parallelism warning
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Configure logging - only important logs
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.ERROR,  # Only log errors by default
+    format='%(asctime)s - %(levelname)s - %(module)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger('cron_job')
+logger.setLevel(logging.INFO)
+
+# Set specific loggers to ERROR level to suppress unnecessary output
+logging.getLogger('selenium').setLevel(logging.ERROR)
+logging.getLogger('urllib3').setLevel(logging.ERROR)
+logging.getLogger('qdrant_client').setLevel(logging.ERROR)
+logging.getLogger('scrapy').setLevel(logging.ERROR)
+logging.getLogger('filelock').setLevel(logging.ERROR)
 
 # Import project modules
 from crawler.coin_data_source import fetch_coin_data, save_coin_data, fetch_fear_and_greed, save_fear_and_greed
@@ -42,8 +52,9 @@ from crawler.fetch_articles_content import update_article
 from chrome_driver import create_chrome_driver
 from data_processor import process_data_for_embedding
 from database import setup_database, connect_db
-from config import COIN_NUMBER, ARTICLE_EN, ARTICLE_VI
-from integration_manager import update_embeddings
+from config import COIN_NUMBER, ARTICLE_EN, ARTICLE_VI, CRAWL_INTERVAL_MINUTES, RESET_DATABASE
+from integration_manager import update_embeddings, check_embedding_status
+from migrations.migrate_database import migrate_database
 
 def run_coin68_crawler(driver):
     """Run the Coin68 crawler to fetch Vietnamese articles"""
@@ -62,6 +73,7 @@ def run_coin68_crawler(driver):
         settings.update({
             'LOG_ENABLED': False,
             'LOG_LEVEL': 'ERROR',  # Only show errors
+            'ROBOTSTXT_OBEY': False,  # Skip robots.txt check for efficiency
             'FEEDS': {
                 'articles.json': {
                     'format': 'json',
@@ -136,7 +148,7 @@ def verify_embedding_status():
         cursor.close()
         conn.close()
         
-        logger.info(f"Embedding status: {embedding_status['embedded_articles']}/{embedding_status['total_articles']} articles embedded ({embedding_status['embedding_percentage']}%)")
+        logger.info(f"Embedding status: {embedded}/{total} articles embedded ({embedding_status['embedding_percentage']}%)")
         
         return embedding_status
         
@@ -149,9 +161,24 @@ def run_cron_job():
     start_time = time.time()
     job_id = datetime.now().strftime("%Y%m%d%H%M%S")
     
+    # Only log important information when running as a cron job
+    logger.setLevel(logging.INFO)
+    
     logger.info(f"Starting crawler job {job_id}")
     
     try:
+        # First, ensure database tables are properly set up
+        try:
+            # Run database migrations
+            migrate_database()
+            
+            # Setup database with reset option from config
+            setup_database(reset_data=RESET_DATABASE)
+            logger.info("Database structure verified and ready")
+        except Exception as e:
+            logger.error(f"Error setting up database: {e}")
+            return
+        
         # Initialize Chrome driver
         logger.info("Initializing Chrome WebDriver...")
         driver = create_chrome_driver(headless=True, terminate_chrome=False)
@@ -191,22 +218,15 @@ def run_cron_job():
                 logger.warning("No Vietnamese articles were saved")
                     
             # 5. Process the data for the Economic AGENT
-            logger.info("Processing and embedding articles for RAG system...")
+            logger.info("Processing articles for embedding...")
             new_articles_count = process_data_for_embedding()
             logger.info(f"Processed {new_articles_count} new articles for embedding")
             
             # 6. Force embedding of all unembedded articles
-            logger.info("Forcing embedding of all processed articles...")
-            # Run embedding process multiple times to ensure all articles are embedded
-            total_embedded = 0
-            for attempt in range(1, 4):  # Try up to 3 times
-                embedded_count = update_embeddings(standalone_mode=True)
-                total_embedded += embedded_count
-                logger.info(f"Embedding attempt {attempt}: Embedded {embedded_count} articles")
-                
-                if embedded_count == 0:
-                    logger.info("No more articles to embed")
-                    break
+            logger.info("Embedding all processed articles into vector store...")
+            # Run standalone mode with the proper embedding implementation
+            total_embedded = update_embeddings(standalone_mode=True)
+            logger.info(f"Embedded {total_embedded} articles into vector store")
             
             # 7. Verify embedding status
             embedding_status = verify_embedding_status()

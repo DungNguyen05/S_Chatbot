@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import database connection
-from database import connect_db
+from database import connect_db, setup_database
 
 def run_migration(migration_file):
     """Run a SQL migration file"""
@@ -69,9 +69,12 @@ def run_migration(migration_file):
         logger.error(f"Migration failed: {e}")
         return False
 
-def main():
-    """Run all migrations"""
+def migrate_database():
+    """Run all migrations and ensure database structure is setup"""
     logger.info("Starting database migrations")
+    
+    # First ensure database tables exist
+    setup_database(reset_data=False)
     
     # Get migration directory
     migrations_dir = Path(__file__).parent
@@ -90,9 +93,9 @@ def main():
         success = run_migration(migration_file)
         if not success:
             logger.error(f"Migration failed: {migration_file}")
-            sys.exit(1)
+            return
     
     logger.info("All migrations completed successfully")
 
 if __name__ == "__main__":
-    main()
+    migrate_database()

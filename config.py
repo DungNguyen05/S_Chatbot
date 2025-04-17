@@ -9,6 +9,9 @@ from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 from distutils.util import strtobool
 
+# Disable tokenizers parallelism warning
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -92,10 +95,6 @@ CHUNK_OVERLAP = _parse_int(os.getenv("CHUNK_OVERLAP"), 200)
 # Query transformation settings
 USE_QUERY_EXPANSION = _parse_bool(os.getenv("USE_QUERY_EXPANSION", "true"))
 USE_RERANKING = _parse_bool(os.getenv("USE_RERANKING", "true"))
-
-# HuggingFace Tokenizers settings
-TOKENIZERS_PARALLELISM = _parse_bool(os.getenv("TOKENIZERS_PARALLELISM", "false"))
-# Already set at the top: os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Server Configuration
 HOST = os.getenv("HOST", "0.0.0.0")
