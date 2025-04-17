@@ -77,7 +77,7 @@ CRAWL_INTERVAL_MINUTES = _parse_int(os.getenv("CRAWL_INTERVAL_MINUTES"), 15)  # 
 # Crawler Timing Configuration
 DELAY = _parse_int(os.getenv("DELAY"), 5)                       # Default delay between requests
 RETRY = _parse_int(os.getenv("RETRY"), 3)                       # Default retry count
-PAGE_LOAD_TIMEOUT = _parse_int(os.getenv("PAGE_LOAD_TIMEOUT"), 30)  # Default page load timeout
+PAGE_LOAD_TIMEOUT = _parse_int(os.getenv("PAGE_LOAD_TIMEOUT"), 15)  # Default page load timeout
 
 # RAG Configuration
 # Default to all-MiniLM-L6-v2 which is fast and good quality

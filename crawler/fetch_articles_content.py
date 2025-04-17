@@ -5,14 +5,13 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
-from config import API_KEY_DIFFBOT
+from config import API_KEY_DIFFBOT, PAGE_LOAD_TIMEOUT
 
 API_KEY = os.getenv("DIFFBOT_API_KEY", API_KEY_DIFFBOT)
 BASE_URL = "https://api.diffbot.com/v3/article"
 
 DELAY = 4
 RETRY = 3
-PAGE_LOAD_TIMEOUT = 30  # Default timeout in seconds
 
 def update_article(driver, articles):
     print("🔍 Starting to fetch article content")
@@ -33,7 +32,7 @@ def update_article(driver, articles):
             try:
                 driver.get(article['url'])
             except TimeoutException:
-                print(f"⏩ Skipping article {article_num}/{len(articles)}: Page load timeout (30s)")
+                print(f"⏩ Skipping article {article_num}/{len(articles)}: Page load timeout ({PAGE_LOAD_TIMEOUT})")
                 timeout_count += 1
                 failed_count += 1
                 continue
@@ -147,7 +146,7 @@ def update_article(driver, articles):
     # Provide recommendations if there were many timeouts
     if timeout_count > 0:
         print("\n⚠️ Timeout errors detected. Consider these solutions:")
-        print("1. Increase the page load timeout in the code (currently 30s)")
+        print("1. Increase the page load timeout in the code")
         print("2. Check your internet connection speed")
         print("3. Reduce the number of concurrent browser operations")
         print("4. Add more delay between requests")

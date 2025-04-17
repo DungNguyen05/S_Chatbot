@@ -179,7 +179,7 @@ def run_cron_job():
         
         # Initialize Chrome driver
         logger.info("Initializing Chrome WebDriver...")
-        driver = create_chrome_driver(headless=True, terminate_chrome=False)
+        driver = create_chrome_driver()
         if not driver:
             logger.error("Failed to initialize Chrome driver. Aborting.")
             return
