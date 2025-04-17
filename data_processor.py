@@ -275,7 +275,8 @@ def process_data():
                 content_en = content_en.replace('\n', ' ').replace('  ', ' ')
                 
                 # Generate summary
-                summary_en = summarize_text(content_en, num_sentences=4)
+                # summary_en = summarize_text(content_en, num_sentences=4)
+                summary_en = content_en
 
                 # Update database with translations, summary, and embedding status
                 cursor.execute("""

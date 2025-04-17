@@ -128,7 +128,7 @@ class QdrantStore:
         if search_kwargs is None:
             search_kwargs = {
                 "k": config.MAX_SEARCH_RESULTS,
-                "score_threshold": 0.3  # Default minimum similarity score
+                "score_threshold": 0.1  # Default minimum similarity score
             }
             
         return self.vector_store.as_retriever(
@@ -165,7 +165,7 @@ class QdrantStore:
             logger.error(f"Error counting vectors: {e}")
             return 0
             
-    def search_documents(self, query, k=5, include_metadata=True, score_threshold=0.5):
+    def search_documents(self, query, k=5, include_metadata=True, score_threshold=0.1):
         """
         Enhanced document search with metadata and threshold filtering
         
