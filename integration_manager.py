@@ -233,40 +233,6 @@ def check_embedding_status():
             "error": str(e)
         }
 
-def remove_old_articles(days_to_keep=30):
-    """Remove old articles from the database to prevent it from growing too large
-    
-    Args:
-        days_to_keep (int): Number of days of articles to keep
-        
-    Returns:
-        int: Number of articles removed
-    """
-    from database import connect_db
-    
-    try:
-        conn = connect_db()
-        cursor = conn.cursor()
-        
-        # Delete old articles
-        cursor.execute(f"""
-            DELETE FROM articles 
-            WHERE published_at < DATE_SUB(NOW(), INTERVAL {days_to_keep} DAY)
-        """)
-        
-        deleted_count = cursor.rowcount
-        conn.commit()
-        
-        cursor.close()
-        conn.close()
-        
-        logger.info(f"Removed {deleted_count} articles older than {days_to_keep} days")
-        return deleted_count
-        
-    except Exception as e:
-        logger.error(f"Error removing old articles: {e}")
-        return 0
-
 def get_article_by_id(article_id):
     """Get an article from the database by ID
     
@@ -332,44 +298,4 @@ def get_recent_articles(limit=10, offset=0):
         
     except Exception as e:
         logger.error(f"Error getting recent articles: {e}")
-        return []
-
-def search_articles_by_keyword(keyword, limit=10):
-    """Search articles by keyword in title or content
-    
-    Args:
-        keyword (str): The search keyword
-        limit (int): Maximum number of articles to return
-        
-    Returns:
-        list: List of matching article dictionaries
-    """
-    from database import connect_db
-    
-    try:
-        conn = connect_db()
-        cursor = conn.cursor(dictionary=True)
-        
-        # Use LIKE for simple text search
-        search_term = f"%{keyword}%"
-        
-        cursor.execute("""
-            SELECT id, title, url, source, published_at, currencies, summary
-            FROM articles
-            WHERE 
-                (title LIKE %s OR content LIKE %s) 
-                AND summary IS NOT NULL
-            ORDER BY published_at DESC
-            LIMIT %s
-        """, (search_term, search_term, limit))
-        
-        articles = cursor.fetchall()
-        
-        cursor.close()
-        conn.close()
-        
-        return articles
-        
-    except Exception as e:
-        logger.error(f"Error searching articles by keyword: {e}")
         return []

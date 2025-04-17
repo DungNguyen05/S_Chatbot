@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Import database connection
 from database import connect_db, setup_database
+from config import RESET_DATABASE
 
 def run_migration(migration_file):
     """Run a SQL migration file"""
@@ -74,7 +75,7 @@ def migrate_database():
     logger.info("Starting database migrations")
     
     # First ensure database tables exist
-    setup_database(reset_data=False)
+    setup_database(reset_data=RESET_DATABASE)
     
     # Get migration directory
     migrations_dir = Path(__file__).parent

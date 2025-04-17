@@ -52,7 +52,7 @@ from crawler.fetch_articles_content import update_article
 from chrome_driver import create_chrome_driver
 from data_processor import process_data_for_embedding
 from database import setup_database, connect_db
-from config import COIN_NUMBER, ARTICLE_EN, ARTICLE_VI, CRAWL_INTERVAL_MINUTES, RESET_DATABASE
+from config import COIN_NUMBER, ARTICLE_EN, ARTICLE_VI
 from integration_manager import update_embeddings, check_embedding_status
 from migrations.migrate_database import migrate_database
 
@@ -172,8 +172,6 @@ def run_cron_job():
             # Run database migrations
             migrate_database()
             
-            # Setup database with reset option from config
-            setup_database(reset_data=RESET_DATABASE)
             logger.info("Database structure verified and ready")
         except Exception as e:
             logger.error(f"Error setting up database: {e}")
