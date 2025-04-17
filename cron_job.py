@@ -21,15 +21,16 @@ import importlib.util
 import subprocess
 from datetime import datetime
 import traceback
+import json
 
 # Add the project directory to the path so we can import modules
 project_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_dir)
 
-# Configure logging
+# Configure logging - only important logs
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger('cron_job')
@@ -44,7 +45,6 @@ from database import setup_database, connect_db
 from config import COIN_NUMBER, ARTICLE_EN, ARTICLE_VI
 from integration_manager import update_embeddings
 
-# Find and update the run_coin68_crawler function in cron_job.py
 def run_coin68_crawler(driver):
     """Run the Coin68 crawler to fetch Vietnamese articles"""
     logger.info("Running Coin68 crawler...")
@@ -58,9 +58,10 @@ def run_coin68_crawler(driver):
         
         # Get project settings
         settings = get_project_settings()
-        # Override some settings to ensure proper operation
+        # Override some settings to ensure proper operation and reduce noise
         settings.update({
             'LOG_ENABLED': False,
+            'LOG_LEVEL': 'ERROR',  # Only show errors
             'FEEDS': {
                 'articles.json': {
                     'format': 'json',
@@ -79,32 +80,70 @@ def run_coin68_crawler(driver):
         
         # Load the generated JSON file
         try:
+            articles = []
             with open('articles.json', 'r', encoding='utf-8') as file:
                 content = file.read().strip()
                 if content:
                     articles = json.loads(content)
-                    logger.info(f"Loaded {len(articles)} articles from articles.json")
+                    logger.info(f"Loaded {len(articles)} articles from Coin68 crawler")
                     
                     # Save articles to database
                     from crawler.coin_articles_source import save_articles
                     save_articles(articles)
-                    return True
+                    return len(articles)
                 else:
-                    logger.warning("articles.json was empty")
-                    return False
+                    logger.warning("No articles found in articles.json")
+                    return 0
         except FileNotFoundError:
             logger.error("articles.json was not created by the crawler")
-            return False
+            return 0
         except json.JSONDecodeError as e:
             logger.error(f"Error parsing articles.json: {e}")
-            return False
+            return 0
                 
     except Exception as e:
         logger.error(f"Error running Coin68 crawler: {str(e)}")
-        logger.error(traceback.format_exc())
-        return False
+        return 0
 
-# Now fix the call to this function in run_cron_job
+def verify_embedding_status():
+    """Verify if the crawled data has been embedded properly"""
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        
+        # Get counts of articles and embedded status
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN embedded = 1 THEN 1 ELSE 0 END) as embedded,
+                SUM(CASE WHEN embedded = 0 AND summary IS NOT NULL THEN 1 ELSE 0 END) as pending
+            FROM articles
+        """)
+        
+        result = cursor.fetchone()
+        total = result[0]
+        embedded = result[1]
+        pending = result[2]
+        
+        # Check if all processed articles (with summary) are embedded
+        embedding_status = {
+            "total_articles": total,
+            "embedded_articles": embedded,
+            "pending_articles": pending,
+            "embedding_percentage": round((embedded / total * 100), 2) if total > 0 else 0
+        }
+        
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"Embedding status: {embedding_status['embedded_articles']}/{embedding_status['total_articles']} articles embedded ({embedding_status['embedding_percentage']}%)")
+        
+        return embedding_status
+        
+    except Exception as e:
+        logger.error(f"Error verifying embedding status: {e}")
+        return None
+
 def run_cron_job():
     """Main function to run the crawler and process data"""
     start_time = time.time()
@@ -124,67 +163,67 @@ def run_cron_job():
             # 1. Crawl fear and greed data
             logger.info("Fetching Fear and Greed Index...")
             fear_and_greed = fetch_fear_and_greed()
-            save_fear_and_greed(fear_and_greed)
+            if fear_and_greed:
+                save_fear_and_greed(fear_and_greed)
+                logger.info("Fear and Greed data saved successfully")
             
             # 2. Crawl coin data
             logger.info(f"Fetching data for top {COIN_NUMBER} coins...")
             coins = fetch_coin_data(limit=COIN_NUMBER, convert="USD")
-            save_coin_data(coins)
+            if coins:
+                save_coin_data(coins)
+                logger.info(f"Saved data for {len(coins)} coins")
             
             # 3. Crawl crypto news articles (English)
             logger.info(f"Fetching {ARTICLE_EN} English articles...")
             articles = fetch_articles_data(limit=ARTICLE_EN)
-            update_article(driver, articles)
-            save_articles(articles)
+            if articles:
+                update_article(driver, articles)
+                save_articles(articles)
+                logger.info(f"Saved {len(articles)} English articles")
             
             # 4. Crawl Coin68 (Vietnamese articles)
-            logger.info(f"Fetching {ARTICLE_VI} Vietnamese articles from Coin68...")
-            # FIX: Pass the driver to the function
-            success = run_coin68_crawler(driver)
-            if success:
-                logger.info("Coin68 crawler completed successfully")
+            logger.info(f"Fetching Vietnamese articles from Coin68...")
+            vi_articles_count = run_coin68_crawler(driver)
+            if vi_articles_count > 0:
+                logger.info(f"Saved {vi_articles_count} Vietnamese articles")
             else:
-                logger.warning("Coin68 crawler failed or partially failed")
+                logger.warning("No Vietnamese articles were saved")
                     
             # 5. Process the data for the Economic AGENT
             logger.info("Processing and embedding articles for RAG system...")
             new_articles_count = process_data_for_embedding()
+            logger.info(f"Processed {new_articles_count} new articles for embedding")
             
             # 6. Force embedding of all unembedded articles
             logger.info("Forcing embedding of all processed articles...")
-            # Keep embedding until no more articles need to be embedded
+            # Run embedding process multiple times to ensure all articles are embedded
             total_embedded = 0
-            for _ in range(3):  # Try up to 3 times to catch all articles
+            for attempt in range(1, 4):  # Try up to 3 times
                 embedded_count = update_embeddings(standalone_mode=True)
                 total_embedded += embedded_count
+                logger.info(f"Embedding attempt {attempt}: Embedded {embedded_count} articles")
+                
                 if embedded_count == 0:
-                    break  # No more articles to embed
-            
-            if total_embedded > 0:
-                logger.info(f"Successfully embedded {total_embedded} articles")
-            else:
-                logger.info("No new articles needed embedding")
+                    logger.info("No more articles to embed")
+                    break
             
             # 7. Verify embedding status
-            conn = connect_db()
-            cursor = conn.cursor()
+            embedding_status = verify_embedding_status()
             
-            # Check unembedded articles count
-            cursor.execute("SELECT COUNT(*) FROM articles WHERE embedded = 0 AND summary IS NOT NULL")
-            remaining_count = cursor.fetchone()[0]
+            # If there are still unembedded articles, try one more time
+            if embedding_status and embedding_status['pending_articles'] > 0:
+                logger.warning(f"There are still {embedding_status['pending_articles']} articles that need embedding")
+                final_embedded = update_embeddings(standalone_mode=True)
+                logger.info(f"Final embedding attempt: Embedded {final_embedded} additional articles")
+                
+                # Update embedding status
+                embedding_status = verify_embedding_status()
             
-            if remaining_count > 0:
-                logger.warning(f"There are still {remaining_count} articles that need embedding")
-                # Try one more time for any remaining articles
-                update_embeddings(standalone_mode=True)
-            else:
-                logger.info("All processed articles have been successfully embedded")
-            
-            cursor.close()
-            conn.close()
-            
+            # 8. Report completion
             elapsed_time = time.time() - start_time
-            logger.info(f"Crawler job {job_id} completed successfully in {elapsed_time:.2f} seconds")
+            logger.info(f"Crawler job {job_id} completed in {elapsed_time:.2f} seconds")
+            logger.info(f"Articles: {vi_articles_count + len(articles) if articles else 0} | Processed: {new_articles_count} | Embedded: {total_embedded}")
             
         finally:
             # Always close the driver
