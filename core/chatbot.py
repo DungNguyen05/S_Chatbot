@@ -164,7 +164,7 @@ class Chatbot:
         """Count the number of tokens in a text string using the tokenizer"""
         return len(self.tokenizer.encode(text))
     
-    def generate_answer(self, 
+    async def generate_answer(self, 
                         question: str, 
                         chat_history: Optional[List[Dict]] = None, 
                         session_id: str = "default") -> Tuple[str, List[Dict]]:
@@ -241,10 +241,14 @@ class Chatbot:
                 logger.info("Using general knowledge for this query")
                 # Use callback to track token usage
                 with get_openai_callback() as cb:
-                    answer = self.general_chain.run(
-                        chat_history=history_text,
-                        question=question
-                    )
+                    # Use invoke instead of run to avoid deprecation warning
+                    result = self.general_chain.invoke({
+                        "chat_history": history_text,
+                        "question": question
+                    })
+                    
+                    # Extract the text from the result
+                    answer = result.get("text", "") if isinstance(result, dict) else str(result)
                     
                     # Log token usage
                     logger.info(f"General tokens used: {cb.total_tokens} (Prompt: {cb.prompt_tokens}, Completion: {cb.completion_tokens})")

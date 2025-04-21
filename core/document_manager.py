@@ -220,33 +220,9 @@ class DocumentManager:
             conn.close()
             
             logger.info(f"Loaded {len(self.documents)} documents from database")
-            
-            # Also try to load from JSON for backward compatibility
-            try:
-                json_documents = load_json(str(self.documents_file))
-                if json_documents:
-                    # Merge with database documents, prioritizing database
-                    db_doc_ids = {doc["id"] for doc in self.documents}
-                    for doc in json_documents:
-                        if doc["id"] not in db_doc_ids:
-                            self.documents.append(doc)
-                    
-                    logger.info(f"Added {len(self.documents) - len(articles)} additional documents from JSON")
-            except Exception as e:
-                logger.error(f"Error loading document data from JSON: {e}")
                 
         except Exception as e:
             logger.error(f"Error loading documents from database: {e}")
-            
-            # Fallback to JSON if database load fails
-            try:
-                documents = load_json(str(self.documents_file))
-                if documents:
-                    self.documents = documents
-                    logger.info(f"Loaded {len(self.documents)} document metadata from JSON (fallback)")
-            except Exception as json_err:
-                logger.error(f"Error loading document data from JSON: {json_err}")
-                self.documents = []
     
     def sync_documents(self) -> None:
         """Resync documents metadata with vector store and database"""
