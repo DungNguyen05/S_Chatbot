@@ -1,4 +1,4 @@
-# core/chatbot.py - Optimized Chatbot implementation with improved token usage
+# core/chatbot.py - Enhanced Chatbot implementation with memory management
 
 import logging
 from typing import List, Dict, Tuple, Optional, Any
@@ -16,7 +16,7 @@ from rag.chains import RAGChainManager
 logger = logging.getLogger(__name__)
 
 class Chatbot:
-    """Optimized economic chatbot with RAG, general capability, and conversation memory"""
+    """Enhanced economic chatbot with RAG, general capability and conversation memory"""
     
     def __init__(self, document_manager, vector_store):
         """Initialize the chatbot with necessary components"""
@@ -43,12 +43,7 @@ class Chatbot:
                 )
                 
                 # Get base retriever from vector store
-                base_retriever = self.vector_store.get_retriever(
-                    search_kwargs={
-                        "k": config.MAX_SEARCH_RESULTS,
-                        "score_threshold": 0.1  # Add required score_threshold parameter
-                    }
-                )
+                base_retriever = self.vector_store.get_retriever()
                 
                 # Set up advanced retriever
                 advanced_retriever = AdvancedRetriever(self.llm, base_retriever)
@@ -65,7 +60,7 @@ class Chatbot:
                 
                 # Create a general-purpose chain for non-document-specific answers
                 general_template = """
-                You are a helpful crypto and economics assistant that can answer a wide range of questions.
+                You are a helpful assistant that can answer a wide range of questions.
                 Use your general knowledge to provide a helpful response.
                 
                 Chat History:
@@ -169,11 +164,11 @@ class Chatbot:
         """Count the number of tokens in a text string using the tokenizer"""
         return len(self.tokenizer.encode(text))
     
-    async def generate_answer(self, 
+    def generate_answer(self, 
                         question: str, 
                         chat_history: Optional[List[Dict]] = None, 
                         session_id: str = "default") -> Tuple[str, List[Dict]]:
-        """Generate an answer using RAG workflow with optimized token usage"""
+        """Generate an answer using either RAG or general knowledge based on query needs"""
         # Get current session history
         session_history = self.get_session_history(session_id)
         
@@ -191,26 +186,30 @@ class Chatbot:
         logger.info(f"Chat history uses {history_tokens} tokens")
         
         try:
+            # Decision logic: Determine if we need RAG or can use general knowledge
             have_documents = len(self.document_manager.get_all_documents()) > 0
+            needs_rag = have_documents
             
-            # If we have documents, try to use them first
-            if have_documents:
-                logger.info("Using RAG to generate a response")
-                
+            # Track the answer and sources
+            answer = ""
+            sources = []
+            
+            # First try to answer with documents if available and query seems to need it
+            if needs_rag:
+                logger.info("Using RAG for this query")
                 # Use callback to track token usage
                 with get_openai_callback() as cb:
                     # Get response from RAG chain
-                    rag_response = self.rag_chain.generate_response(question, recent_history)
+                    response = self.rag_chain.generate_response(question, recent_history)
                     
                     # Log token usage
                     logger.info(f"RAG tokens used: {cb.total_tokens} (Prompt: {cb.prompt_tokens}, Completion: {cb.completion_tokens})")
                 
                 # Extract answer and source documents
-                rag_answer = rag_response.get("answer", "")
-                source_docs = rag_response.get("source_documents", [])
+                answer = response.get("answer", "")
+                source_docs = response.get("source_documents", [])
                 
                 # Extract source information from documents
-                sources = []
                 seen_doc_ids = set()
                 
                 for doc in source_docs:
@@ -225,34 +224,38 @@ class Chatbot:
                             "source": source
                         })
                 
-                # If we found relevant documents, use the RAG answer
-                if sources:
-                    logger.info("Using RAG answer with relevant sources")
-                    
-                    # Update session history with this interaction
-                    self.update_session_history(session_id, question, rag_answer)
-                    
-                    return rag_answer, sources
-                else:
-                    logger.info("No relevant sources found, falling back to general knowledge")
-            else:
-                logger.info("No documents available, using general knowledge")
-            
-            # Fallback to general knowledge if RAG didn't work or no relevant sources
-            with get_openai_callback() as cb:
-                answer = self.general_chain.run(
-                    chat_history=history_text,
-                    question=question
+                # Check if RAG gave a good answer (has sources and doesn't indicate insufficient info)
+                is_good_rag_answer = (
+                    sources and 
+                    "I don't have enough information" not in answer and 
+                    "don't have specific information" not in answer
                 )
                 
-                # Log token usage
-                logger.info(f"General tokens used: {cb.total_tokens} (Prompt: {cb.prompt_tokens}, Completion: {cb.completion_tokens})")
+                # If RAG didn't provide a good answer, fall back to general knowledge
+                if not is_good_rag_answer:
+                    logger.info("RAG didn't provide a good answer, falling back to general knowledge")
+                    needs_rag = False
+            
+            # Use general knowledge if not using RAG or if RAG failed
+            if not needs_rag:
+                logger.info("Using general knowledge for this query")
+                # Use callback to track token usage
+                with get_openai_callback() as cb:
+                    answer = self.general_chain.run(
+                        chat_history=history_text,
+                        question=question
+                    )
+                    
+                    # Log token usage
+                    logger.info(f"General tokens used: {cb.total_tokens} (Prompt: {cb.prompt_tokens}, Completion: {cb.completion_tokens})")
+                    
+                # Clear sources since we're not using RAG
+                sources = []
             
             # Update session history with this interaction
             self.update_session_history(session_id, question, answer)
             
-            # Return general knowledge answer with no sources
-            return answer, []
+            return answer, sources
             
         except Exception as e:
             logger.error(f"Error generating answer: {e}")
@@ -265,7 +268,7 @@ class Chatbot:
     
     def process_feedback(self, question: str, answer: str, feedback: str, relevant_docs: List[Dict]) -> None:
         """Process user feedback on answers (for future improvement)"""
-        # This could be expanded to log feedback, retrain models, or adjust system
+        # This could be expanded to log feedback, retrain models, or adjust relevance scores
         logging.info(f"Received feedback: {feedback}")
         # For now, just log the feedback
         feedback_log = {

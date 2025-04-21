@@ -1,18 +1,18 @@
-# core/document_manager.py - Document handling and storage
+# core/document_manager.py - Document handling and storage with database integration
 import os
 import logging
 from typing import List, Dict, Any, Optional
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
-
 import config
 from core.utils import generate_id, get_current_timestamp, save_json, load_json
+from database import connect_db
 
 logger = logging.getLogger(__name__)
 
 class DocumentManager:
-    """Manages document processing, storage, and retrieval"""
+    """Manages document processing, storage, and retrieval with database integration"""
     
     def __init__(self, vector_store):
         """Initialize document manager with a vector store"""
@@ -28,8 +28,8 @@ class DocumentManager:
             separators=["\n\n", "\n", ". ", " ", ""]
         )
         
-        # Load existing documents
-        self.load_data()
+        # Load documents directly from database
+        self.load_documents_from_db()
         
         logger.info(f"Document manager initialized with {len(self.documents)} documents")
     
@@ -70,7 +70,7 @@ class DocumentManager:
             self.vector_store.add_documents(langchain_docs)
             logger.info(f"Added document with ID {doc_id} split into {len(chunks)} chunks")
             
-            # Save updated documents to JSON
+            # Save updated documents to JSON for backward compatibility
             self.save_data()
             
             return doc_id
@@ -125,7 +125,7 @@ class DocumentManager:
             self.vector_store.add_documents(all_langchain_docs)
             logger.info(f"Added {len(documents)} documents with {len(all_langchain_docs)} total chunks")
             
-            # Save updated documents to JSON
+            # Save updated documents to JSON for backward compatibility
             self.save_data()
             
             return doc_ids
@@ -169,23 +169,87 @@ class DocumentManager:
         return False
     
     def save_data(self) -> None:
-        """Save documents metadata to disk"""
+        """Save documents metadata to disk for backward compatibility"""
         save_json(self.documents, str(self.documents_file))
         logging.info(f"Saved {len(self.documents)} document metadata to disk")
     
-    def load_data(self) -> None:
-        """Load documents metadata from disk"""
+    def load_documents_from_db(self) -> None:
+        """Load documents metadata from the database"""
         try:
-            documents = load_json(str(self.documents_file))
-            if documents:
-                self.documents = documents
-                logger.info(f"Loaded {len(self.documents)} document metadata from disk")
-        except Exception as e:
-            logger.error(f"Error loading document data: {e}")
+            conn = connect_db()
+            if not conn:
+                logger.error("Failed to connect to database")
+                return
+                
+            cursor = conn.cursor(dictionary=True)
+            
+            # Get all embedded articles
+            cursor.execute("""
+                SELECT id, title, source, content, published_at, summary, currencies
+                FROM articles
+                WHERE embedded = 1
+            """)
+            
+            articles = cursor.fetchall()
+            
+            # Convert articles to document format
             self.documents = []
+            for article in articles:
+                try:
+                    if not article['content'] or not article['summary']:
+                        continue
+                        
+                    doc_id = f"db-{article['id']}"
+                    metadata = {
+                        "db_id": article['id'],
+                        "published_at": str(article['published_at']),
+                        "currencies": article['currencies'] or "Unknown"
+                    }
+                    
+                    self.documents.append({
+                        "id": doc_id,
+                        "content": f"{article['title']}\n\n{article['summary']}\n\n{article['content']}",
+                        "source": f"{article['title']} ({article['source']})",
+                        "date_added": get_current_timestamp(),
+                        "metadata": metadata
+                    })
+                except Exception as e:
+                    logger.error(f"Error processing article {article['id']}: {e}")
+            
+            cursor.close()
+            conn.close()
+            
+            logger.info(f"Loaded {len(self.documents)} documents from database")
+            
+            # Also try to load from JSON for backward compatibility
+            try:
+                json_documents = load_json(str(self.documents_file))
+                if json_documents:
+                    # Merge with database documents, prioritizing database
+                    db_doc_ids = {doc["id"] for doc in self.documents}
+                    for doc in json_documents:
+                        if doc["id"] not in db_doc_ids:
+                            self.documents.append(doc)
+                    
+                    logger.info(f"Added {len(self.documents) - len(articles)} additional documents from JSON")
+            except Exception as e:
+                logger.error(f"Error loading document data from JSON: {e}")
+                
+        except Exception as e:
+            logger.error(f"Error loading documents from database: {e}")
+            
+            # Fallback to JSON if database load fails
+            try:
+                documents = load_json(str(self.documents_file))
+                if documents:
+                    self.documents = documents
+                    logger.info(f"Loaded {len(self.documents)} document metadata from JSON (fallback)")
+            except Exception as json_err:
+                logger.error(f"Error loading document data from JSON: {json_err}")
+                self.documents = []
     
     def sync_documents(self) -> None:
-        """Resync documents metadata with vector store"""
+        """Resync documents metadata with vector store and database"""
         doc_count = self.vector_store.count_vectors()
         
         if doc_count == 0 and self.documents:

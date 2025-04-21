@@ -1,4 +1,4 @@
-# rag/vector_store.py - Enhanced vector database using Qdrant with better similarity search
+# rag/vector_store.py - Vector database using Qdrant with Langchain
 import os
 import shutil
 import logging
@@ -7,13 +7,14 @@ from qdrant_client.http import models as qdrant_models
 from langchain_community.vectorstores import Qdrant
 from langchain_core.documents import Document
 
+
 import config
 from rag.embeddings import EmbeddingsManager
 
 logger = logging.getLogger(__name__)
 
 class QdrantStore:
-    """Enhanced vector store for document embeddings and retrieval using Qdrant with Langchain"""
+    """Vector store for document embeddings and retrieval using Qdrant with Langchain"""
     
     def __init__(self, embeddings_manager, collection_name="economic_documents", force_reset=False):
         """Initialize the vector store with Qdrant and Langchain"""
@@ -99,40 +100,20 @@ class QdrantStore:
             logger.error(f"Error adding documents to vector store: {e}")
             raise
     
-    def similarity_search_with_score(self, query, k=None, score_threshold=None):
-        """
-        Perform enhanced similarity search with scores and optional threshold filtering
-        
-        Args:
-            query (str): The query text to search for
-            k (int): Number of results to return (default: from config)
-            score_threshold (float): Minimum similarity score (0-1) to include in results
-            
-        Returns:
-            list: List of (document, score) tuples
-        """
+    def similarity_search_with_score(self, query, k=None):
+        """Perform similarity search with scores"""
         if k is None:
             k = config.MAX_SEARCH_RESULTS
             
-        # Get initial results
-        results = self.vector_store.similarity_search_with_score(query, k=k)
-        
-        # Apply score threshold if provided
-        if score_threshold is not None:
-            results = [(doc, score) for doc, score in results if score >= score_threshold]
-            
-        return results
+        return self.vector_store.similarity_search_with_score(query, k=k)
     
     def get_retriever(self, search_kwargs=None):
-        """Return an enhanced retriever for this vector store"""
+        """Return a retriever for this vector store"""
         if search_kwargs is None:
-            search_kwargs = {
-                "k": config.MAX_SEARCH_RESULTS,
-                "score_threshold": 0.1  # Default minimum similarity score
-            }
+            search_kwargs = {"k": config.MAX_SEARCH_RESULTS}
             
         return self.vector_store.as_retriever(
-            search_type="similarity_score_threshold",  # Use score threshold retrieval
+            search_type="similarity",
             search_kwargs=search_kwargs
         )
     
@@ -164,49 +145,3 @@ class QdrantStore:
         except Exception as e:
             logger.error(f"Error counting vectors: {e}")
             return 0
-            
-    def search_documents(self, query, k=5, include_metadata=True, score_threshold=0.1):
-        """
-        Enhanced document search with metadata and threshold filtering
-        
-        This provides a more controlled and detailed search than the basic similarity_search
-        """
-        try:
-            # Get embeddings for the query
-            query_vector = self.embeddings_manager.get_embeddings().embed_query(query)
-            
-            # Search with Qdrant client directly for more control
-            search_result = self.client.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                limit=k,
-                with_payload=include_metadata,
-                score_threshold=score_threshold
-            )
-            
-            # Process and format results
-            results = []
-            for scored_point in search_result:
-                # Extract content and metadata
-                point_id = scored_point.id
-                score = scored_point.score
-                metadata = scored_point.payload.get("metadata", {})
-                content = scored_point.payload.get("page_content", "")
-                source = metadata.get("source", "Unknown Source")
-                
-                # Format result
-                result = {
-                    "id": str(point_id),
-                    "score": score,
-                    "content": content,
-                    "source": source,
-                    "metadata": metadata
-                }
-                
-                results.append(result)
-                
-            return results
-            
-        except Exception as e:
-            logger.error(f"Error in enhanced document search: {e}")
-            return []

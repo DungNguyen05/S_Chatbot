@@ -49,8 +49,8 @@ PREPARE stmt FROM @sqlStatement;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- Reset all articles as not embedded
-UPDATE articles SET embedded = 0 WHERE embedded IS NULL OR embedded = 1;
+-- Mark only NULL embedded values as non-embedded (instead of resetting all)
+UPDATE articles SET embedded = 0 WHERE embedded IS NULL;
 
 -- Output migration results
 SELECT 
